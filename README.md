@@ -1,50 +1,168 @@
-[![Build
-status](https://travis-ci.org/inconshreveable/ngrok.svg)](https://travis-ci.org/inconshreveable/ngrok)
+# 1. 准备
+`make deps` 安装必要的工具， 如 `go-bindata`
 
-# ngrok - Introspected tunnels to localhost ([homepage](https://ngrok.com))
-### ”I want to expose a local server behind a NAT or firewall to the internet.”
-![](https://ngrok.com/static/img/overview.png)
+验证 `go-bindata`
 
-## What is ngrok?
-ngrok is a reverse proxy that creates a secure tunnel from a public endpoint to a locally running web service.
-ngrok captures and analyzes all traffic over the tunnel for later inspection and replay.
+`make assets` 打包静态资源和证书文件， 见
 
-## ngrok 2.x
++ ngrok/client/assets/assets_debug.go
++ ngrok/server/assets/assets_debug.go
 
-ngrok 2.x is the successor to 1.x and the focus of all current development effort. Its source code is not available.
+> 对应的release版本是 */assets_release.go
 
-**NOTE** This repository contains the code for ngrok 1.x.
+## 1.1. 重新生成证书
 
-## Status of the ngrok 1.x project
+``` bash
+export DOMAIN=dev.domain.com
 
-ngrok 1.x is no longer developed, supported or maintained by its author, except to ensure that the project continues to compile. The contribution policy has the following guidelines:
+openssl genrsa -out rootCA.key 4096
 
-1. All issues against this repository will be closed unless they demonstrate a crash or other complete failure of ngrok's functionality.
-2. All issues against this repository are for 1.x only, any issues for 2.x will be closed.
-3. No new features will be added. Any pull requests with new features will be closed. Please fork the project instead.
-4. Pull requests fixing existing bugs or improving documentation are welcomed.
+openssl req -x509 -new -nodes -key rootCA.key -subj "/CN=${DOMAIN}" -days 5000 -out rootCA.pem
 
-#### The ngrok 1.x hosted service
+cp rootCA.pem assets/client/tls/ngrokroot.crt
 
-ngrok.com ran a pay-what-you-want hosted service of 1.x from early 2013 until April 7, 2016. Afterwards, it only runs 2.x service.
+openssl genrsa -out device.key 4096
 
-## Production Use
+openssl req -new -key device.key -subj "/CN=${DOMAIN}" -out device.csr
 
-**DO NOT RUN THIS VERSION OF NGROK (1.X) IN PRODUCTION**. Both the client and server are known to have serious reliability issues including memory and file descriptor leaks as well as crashes. There is also no HA story as the server is a SPOF. You are advised to run 2.0 for any production quality system. 
+openssl x509 -req -in device.csr -CA rootCA.pem -CAkey rootCA.key -CAcreateserial -out device.crt -days 5000
 
-## What can I do with ngrok?
-- Expose any http service behind a NAT or firewall to the internet on a subdomain of ngrok.com
-- Expose any tcp service behind a NAT or firewall to the internet on a random port of ngrok.com
-- Inspect all http requests/responses that are transmitted over the tunnel
-- Replay any request that was transmitted over the tunnel
+cp device.crt assets/server/tls/snakeoil.crt
 
+cp device.key assets/server/tls/snakeoil.key
+```
 
-## What is ngrok useful for?
-- Temporarily sharing a website that is only running on your development machine
-- Demoing an app at a hackathon without deploying
-- Developing any services which consume webhooks (HTTP callbacks) by allowing you to replay those requests
-- Debugging and understanding any web service by inspecting the HTTP traffic
-- Running networked services on machines that are firewalled off from the internet
+> 生产环境如果要求是真正的可信任证书， 将`ngrok/client/release.go` 的 `useInsecureSkipVerify` 返回 false
 
-## Developing on ngrok
-[ngrok developer's guide](docs/DEVELOPMENT.md)
+# 2. 编译
+``` bash
+# 测试
+$ make client
+$ make server
+# 生产
+$ make release-all
+$ make release-client
+$ make release-server
+```
+
+生成的二进制文件
+
+```
+build/
+├── ngrokd-debug
+├── ngrok-debug
+├── ngrokd-release
+└── ngrok-release
+```
+
+# 3. 部署服务端
+`ngrokd -domain=dev.domain.com -httpAddr=:8002 -httpsAddr=:9082 -tunnelAddr=:4443`
+
+> 如果是云服务器， 需要放开 80、443、4443。 80、443 通过nginx代理， 4443用于nginx客户端直接连接
+
+通过nginx代理80端口
+
+``` nginx
+upstream ngrok {
+    server 127.0.0.1:8002;
+    keepalive 64;
+}
+server {
+	listen 80;
+	server_name *.dev.domain.com;
+	location / {
+
+		proxy_set_header X-Real-IP $remote_addr;
+		proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+		proxy_set_header Host  $http_host:8002;
+		proxy_set_header X-Nginx-Proxy true;
+		proxy_set_header Connection "";
+		proxy_pass      http://ngrok ;
+
+	}
+}
+```
+
+通过监听进程
+`/etc/supervisor/conf.d/ngrok.conf`
+
+``` conf
+[program:ngrok]
+command=ngrokd  -domain="dev.domain.com" -httpAddr=":8002" -httpsAddr=":9082" -tunnelAddr=":4443"
+process_name=ngrokd
+autostart=true
+autorestart=true
+```
+
+# 4. 客户端
+``` conf
+server_addr: dev.domain.com:4443
+trust_host_root_certs: false
+```
+`./ngrok -subdomain test -proto=http -config=./ngrok.cfg 54321`
+
+```
+ngrok
+
+Tunnel Status                 online
+Version                       1.7/1.7
+Forwarding                    http://test.dev.domain.com:8002 -> 127.0.0.1:54321
+Web Interface                 127.0.0.1:4040
+# Conn                        0                                                                                                                    
+Avg Conn Time                 0.00ms
+```
+
+当公网访问 <http://test.dev.domain.com> 时， 流量自动导入本机 54321 端口
+
+## 4.1. tcp
+``` conf
+server_addr: dev.domain.com:4443
+trust_host_root_certs: false
+tunnels:
+ lot:
+  remote_port: 8888
+  proto:
+   tcp: 8880
+```
+
+`ngrok -config ./ngrok.cfg start lot`
+
+```
+ngrok
+
+Tunnel Status                 online
+Version                       1.7/1.7
+Forwarding                    tcp://dev.domain.com:8888 -> 127.0.0.1:8880
+Web Interface                 127.0.0.1:4040
+# Conn                        0
+Avg Conn Time                 0.00ms
+```
+
+## 4.2. 合并
+``` conf
+server_addr: dev.domain.com:4443
+trust_host_root_certs: false
+tunnels:
+ lot:
+  remote_port: 8888
+  proto:
+   tcp: 8880
+ http:
+  subdomain: test
+  proto:
+   http: 127.0.0.1:54321
+```
+
+`ngrok -config ./ngrok.cfg start http lot`
+
+```
+ngrok
+
+Tunnel Status                 online
+Version                       1.7/1.7
+Forwarding                    tcp://dev.domain.com:8888 -> 127.0.0.1:8880
+Forwarding                    http://test.dev.domain.com:8002 -> 127.0.0.1:54321
+Web Interface                 127.0.0.1:4040
+# Conn                        0
+Avg Conn Time                 0.00ms
+```

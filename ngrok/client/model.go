@@ -3,6 +3,14 @@ package client
 import (
 	"crypto/tls"
 	"fmt"
+	"io"
+	"math"
+	"net"
+	"runtime"
+	"strings"
+	"sync/atomic"
+	"time"
+
 	"github.com/qjw/ngrok/ngrok/client/mvc"
 	"github.com/qjw/ngrok/ngrok/conn"
 	"github.com/qjw/ngrok/ngrok/log"
@@ -11,13 +19,6 @@ import (
 	"github.com/qjw/ngrok/ngrok/util"
 	"github.com/qjw/ngrok/ngrok/version"
 	metrics "github.com/rcrowley/go-metrics"
-	"io/ioutil"
-	"math"
-	"net"
-	"runtime"
-	"strings"
-	"sync/atomic"
-	"time"
 )
 
 const (
@@ -101,16 +102,10 @@ func newClientModel(config *Configuration, ctl mvc.Controller) *ClientModel {
 		configPath: config.Path,
 	}
 
-	// configure TLS
-	if config.TrustHostRootCerts {
-		m.Info("Trusting host's root certificates")
-		m.tlsConfig = &tls.Config{}
-	} else {
-		m.Info("Trusting root CAs: %v", rootCrtPaths)
-		var err error
-		if m.tlsConfig, err = LoadTLSConfig(rootCrtPaths); err != nil {
-			panic(err)
-		}
+	// 强制 tls验证
+	var err error
+	if m.tlsConfig, err = LoadTLSConfig(); err != nil {
+		panic(err)
 	}
 
 	// configure TLS SNI
@@ -174,7 +169,7 @@ func (c *ClientModel) PlayRequest(tunnel mvc.Tunnel, payload []byte) {
 	defer localConn.Close()
 	localConn = tunnel.Protocol.WrapConn(localConn, mvc.ConnectionContext{Tunnel: tunnel, ClientAddr: "127.0.0.1"})
 	localConn.Write(payload)
-	ioutil.ReadAll(localConn)
+	io.ReadAll(localConn)
 }
 
 func (c *ClientModel) Shutdown() {

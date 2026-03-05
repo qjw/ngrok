@@ -5,14 +5,16 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
-	vhost "github.com/inconshreveable/go-vhost"
-	"github.com/qjw/ngrok/ngrok/log"
 	"io"
 	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"sync"
+
+	vhost "github.com/inconshreveable/go-vhost"
+	"github.com/qjw/ngrok/ngrok/log"
 )
 
 type Conn interface {
@@ -97,7 +99,11 @@ func Dial(addr, typ string, tlsCfg *tls.Config) (conn *loggedConn, err error) {
 	conn.Debug("New connection to: %v", rawConn.RemoteAddr())
 
 	if tlsCfg != nil {
-		conn.StartTLS(tlsCfg)
+		err = conn.StartTLS(tlsCfg)
+		if err != nil {
+			// 客户端打印出来， 不然不清楚为什么连接失败
+			os.Stderr.WriteString(err.Error() + "\n")
+		}
 	}
 
 	return
@@ -156,13 +162,22 @@ func DialHttpProxy(proxyUrl, addr, typ string, tlsCfg *tls.Config) (conn *logged
 	}
 
 	// upgrade to TLS
-	conn.StartTLS(tlsCfg)
+	err = conn.StartTLS(tlsCfg)
 
 	return
 }
 
-func (c *loggedConn) StartTLS(tlsCfg *tls.Config) {
-	c.Conn = tls.Client(c.Conn, tlsCfg)
+func (c *loggedConn) StartTLS(tlsCfg *tls.Config) error {
+	tlsConn := tls.Client(c.Conn, tlsCfg)
+	c.Conn = tlsConn
+
+	// 4. 判断失败的关键点
+	err := tlsConn.Handshake()
+	if err != nil {
+		return fmt.Errorf("StartTLS 握手失败: %w", err)
+	}
+
+	return nil
 }
 
 func (c *loggedConn) Close() (err error) {

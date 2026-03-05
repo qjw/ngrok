@@ -3,10 +3,7 @@
 
 package client
 
-var (
-	rootCrtPaths = []string{"assets/client/tls/ngrokroot.crt"}
-)
-
 func useInsecureSkipVerify() bool {
-	return true
+	// release 不能跳过校验
+	return false
 }

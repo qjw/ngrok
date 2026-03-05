@@ -1,38 +1,36 @@
 # 1. 准备
-`make deps` 安装必要的工具， 如 `go-bindata`
-
-验证 `go-bindata`
-
-`make assets` 打包静态资源和证书文件， 见
-
-+ ngrok/client/assets/assets_debug.go
-+ ngrok/server/assets/assets_debug.go
-
-> 对应的release版本是 */assets_release.go
-
-## 1.1. 重新生成证书
 
 ``` bash
-export DOMAIN=dev.domain.com
+# 服务器域名， 后续使用 <subdomain>.king.com 来做内网穿透
+export domain="king.com"
+# 创建 ca 私钥 
+openssl genrsa -out ca.key 4096
+# 创建 ca 根证书
+openssl req -x509 -new -nodes -key ca.key -subj "/CN=${domain}" -days 3650 -out ca.crt
+	
+# 创建 客户端私钥
+openssl genrsa -out client.key 4096
+# 创建客户端csr
+openssl req -new -key client.key -subj "/CN=${domain}" -out client.csr
+# ca签发客户端证书 (无需sans)
+openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out client.crt -days 3650
 
-openssl genrsa -out rootCA.key 4096
+# 创建 服务器私钥
+openssl genrsa -out server.key 4096
+# 创建服务器csr
+openssl req -new -key server.key -subj "/CN=${domain}" -out server.csr
+# ca签发服务器证书
+openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 3650 \
+	-extfile <(printf "subjectAltName=DNS:${domain}")
 
-openssl req -x509 -new -nodes -key rootCA.key -subj "/CN=${DOMAIN}" -days 5000 -out rootCA.pem
-
-cp rootCA.pem assets/client/tls/ngrokroot.crt
-
-openssl genrsa -out device.key 4096
-
-openssl req -new -key device.key -subj "/CN=${DOMAIN}" -out device.csr
-
-openssl x509 -req -in device.csr -CA rootCA.pem -CAkey rootCA.key -CAcreateserial -out device.crt -days 5000
-
-cp device.crt assets/server/tls/snakeoil.crt
-
-cp device.key assets/server/tls/snakeoil.key
+# 拷贝到项目目录
+cp ca.crt assets/client/tls/ngrokroot.crt
+cp client.crt assets/client/tls/client.crt
+cp client.key assets/client/tls/client.key
+cp server.crt assets/server/tls/server.crt
+cp server.key assets/server/tls/server.key
+rm *.key *.csr *.crt *.srl
 ```
-
-> 生产环境如果要求是真正的可信任证书， 将`ngrok/client/release.go` 的 `useInsecureSkipVerify` 返回 false
 
 # 2. 编译
 ``` bash

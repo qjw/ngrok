@@ -1,6 +1,6 @@
 module github.com/qjw/ngrok
 
-go 1.17
+go 1.19
 
 require (
 	github.com/alecthomas/log4go v0.0.0-20180109082532-d146e6b86faa

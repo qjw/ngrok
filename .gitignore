@@ -2,9 +2,9 @@
 bin/
 vendor
 build
-device.crt
-device.csr
-device.key
-rootCA.key
-rootCA.pem
-rootCA.srl
+ngrok.cfg
+**/*.crt
+**/*.key
+**/*.csr
+**/*.pem
+**/*.srl

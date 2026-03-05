@@ -5,17 +5,18 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/xml"
-	"github.com/qjw/ngrok/ngrok/client/assets"
-	"github.com/qjw/ngrok/ngrok/client/mvc"
-	"github.com/qjw/ngrok/ngrok/log"
-	"github.com/qjw/ngrok/ngrok/proto"
-	"github.com/qjw/ngrok/ngrok/util"
 	"html/template"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strings"
 	"unicode/utf8"
+
+	assets "github.com/qjw/ngrok/assets/client"
+	"github.com/qjw/ngrok/ngrok/client/mvc"
+	"github.com/qjw/ngrok/ngrok/log"
+	"github.com/qjw/ngrok/ngrok/proto"
+	"github.com/qjw/ngrok/ngrok/util"
 )
 
 type SerializedTxn struct {
@@ -241,12 +242,7 @@ func (whv *WebHttpView) register() {
 			}
 		}()
 
-		pageTmpl, err := assets.Asset("assets/client/page.html")
-		if err != nil {
-			panic(err)
-		}
-
-		tmpl := template.Must(template.New("page.html").Delims("{%", "%}").Parse(string(pageTmpl)))
+		tmpl := template.Must(template.New("page.html").Delims("{%", "%}").Parse(assets.PageHtml))
 
 		payloadData := SerializedPayload{
 			Txns:    whv.HttpRequests.Slice(),

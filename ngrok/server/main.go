@@ -2,14 +2,15 @@ package server
 
 import (
 	"crypto/tls"
-	"github.com/qjw/ngrok/ngrok/conn"
-	log "github.com/qjw/ngrok/ngrok/log"
-	"github.com/qjw/ngrok/ngrok/msg"
-	"github.com/qjw/ngrok/ngrok/util"
 	"math/rand"
 	"os"
 	"runtime/debug"
 	"time"
+
+	"github.com/qjw/ngrok/ngrok/conn"
+	log "github.com/qjw/ngrok/ngrok/log"
+	"github.com/qjw/ngrok/ngrok/msg"
+	"github.com/qjw/ngrok/ngrok/util"
 )
 
 const (
@@ -121,7 +122,7 @@ func Main() {
 	listeners = make(map[string]*conn.Listener)
 
 	// load tls configuration
-	tlsConfig, err := LoadTLSConfig(opts.tlsCrt, opts.tlsKey)
+	tlsConfig, err := LoadTLSConfig()
 	if err != nil {
 		panic(err)
 	}

@@ -2,41 +2,30 @@ package server
 
 import (
 	"crypto/tls"
-	"github.com/qjw/ngrok/ngrok/server/assets"
-	"io/ioutil"
+	"crypto/x509"
+
+	"github.com/qjw/ngrok/assets"
 )
 
-func LoadTLSConfig(crtPath string, keyPath string) (tlsConfig *tls.Config, err error) {
-	fileOrAsset := func(path string, default_path string) ([]byte, error) {
-		loadFn := ioutil.ReadFile
-		if path == "" {
-			loadFn = assets.Asset
-			path = default_path
-		}
-
-		return loadFn(path)
+func LoadTLSConfig() (tlsConfig *tls.Config, err error) {
+	// 信任CA根证书
+	clientCertPool := x509.NewCertPool()
+	ok := clientCertPool.AppendCertsFromPEM(assets.CaCrt)
+	if !ok {
+		panic("failed to parse root certificate")
 	}
 
-	var (
-		crt  []byte
-		key  []byte
-		cert tls.Certificate
-	)
-
-	if crt, err = fileOrAsset(crtPath, "assets/server/tls/snakeoil.crt"); err != nil {
-		return
-	}
-
-	if key, err = fileOrAsset(keyPath, "assets/server/tls/snakeoil.key"); err != nil {
-		return
-	}
-
-	if cert, err = tls.X509KeyPair(crt, key); err != nil {
+	// 服务端证书配置
+	var cert tls.Certificate
+	if cert, err = tls.X509KeyPair(assets.ServerCrt, assets.ServerKey); err != nil {
 		return
 	}
 
 	tlsConfig = &tls.Config{
-		Certificates: []tls.Certificate{cert},
+		ClientCAs:          clientCertPool,
+		Certificates:       []tls.Certificate{cert},
+		ClientAuth:         tls.RequireAndVerifyClientCert,
+		InsecureSkipVerify: false,
 	}
 
 	return

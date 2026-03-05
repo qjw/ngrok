@@ -2,14 +2,15 @@
 package web
 
 import (
+	"io/fs"
+	"net/http"
+
 	"github.com/gorilla/websocket"
-	"github.com/qjw/ngrok/ngrok/client/assets"
+	assets "github.com/qjw/ngrok/assets/client"
 	"github.com/qjw/ngrok/ngrok/client/mvc"
 	"github.com/qjw/ngrok/ngrok/log"
 	"github.com/qjw/ngrok/ngrok/proto"
 	"github.com/qjw/ngrok/ngrok/util"
-	"net/http"
-	"path"
 )
 
 type WebView struct {
@@ -54,16 +55,14 @@ func NewWebView(ctl mvc.Controller, addr string) *WebView {
 		}
 	})
 
-	// serve static assets
-	http.HandleFunc("/static/", func(w http.ResponseWriter, r *http.Request) {
-		buf, err := assets.Asset(path.Join("assets", "client", r.URL.Path[1:]))
-		if err != nil {
-			wv.Warn("Error serving static file: %s", err.Error())
-			http.NotFound(w, r)
-			return
-		}
-		w.Write(buf)
-	})
+	// 从 embed.FS 中创建子文件系统
+	// staticFiles 中包含 "static/" 前缀，我们需要去掉这个前缀
+	staticFS, err := fs.Sub(assets.StaticFiles, "static")
+	if err != nil {
+		panic(err)
+	}
+
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 
 	wv.Info("Serving web interface on %s", addr)
 	wv.ctl.Go(func() { http.ListenAndServe(addr, nil) })

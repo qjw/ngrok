@@ -4,32 +4,30 @@ import (
 	_ "crypto/sha512"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/pem"
-	"fmt"
-	"github.com/qjw/ngrok/ngrok/client/assets"
+
+	"github.com/qjw/ngrok/assets"
 )
 
-func LoadTLSConfig(rootCertPaths []string) (*tls.Config, error) {
+func LoadTLSConfig() (*tls.Config, error) {
+	// 信任CA根证书
 	pool := x509.NewCertPool()
-
-	for _, certPath := range rootCertPaths {
-		rootCrt, err := assets.Asset(certPath)
-		if err != nil {
-			return nil, err
-		}
-
-		pemBlock, _ := pem.Decode(rootCrt)
-		if pemBlock == nil {
-			return nil, fmt.Errorf("Bad PEM data")
-		}
-
-		certs, err := x509.ParseCertificates(pemBlock.Bytes)
-		if err != nil {
-			return nil, err
-		}
-
-		pool.AddCert(certs[0])
+	ok := pool.AppendCertsFromPEM(assets.CaCrt)
+	if !ok {
+		panic("failed to parse root certificate")
 	}
 
-	return &tls.Config{RootCAs: pool}, nil
+	// 服务端证书配置
+	var (
+		cert tls.Certificate
+		err  error
+	)
+
+	if cert, err = tls.X509KeyPair(assets.ClientCrt, assets.ClientKey); err != nil {
+		return nil, err
+	}
+
+	return &tls.Config{
+		RootCAs:      pool,
+		Certificates: []tls.Certificate{cert},
+	}, nil
 }
